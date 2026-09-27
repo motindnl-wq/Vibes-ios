@@ -1,0 +1,51 @@
+name: Build Vibes IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build Vibes
+        run: |
+          xcodebuild \
+            -project Vibes/Vibes.xcodeproj \
+            -scheme Vibes \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build \
+            CONFIGURATION_BUILD_DIR="$GITHUB_WORKSPACE/build"
+
+      - name: Create unsigned IPA
+        run: |
+          mkdir -p Payload
+
+          APP=$(find "$GITHUB_WORKSPACE/build" -maxdepth 1 -name "*.app" -type d | head -1)
+
+          if [ -z "$APP" ]; then
+            echo "ERROR: Vibes .app was not produced"
+            find "$GITHUB_WORKSPACE/build" -maxdepth 3 -print
+            exit 1
+          fi
+
+          echo "Found app: $APP"
+          cp -R "$APP" Payload/
+          zip -r Vibes-unsigned.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Vibes-unsigned-IPA
+          path: Vibes-unsigned.ipa
