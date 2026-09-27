@@ -6,13 +6,23 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Get public YouTube Music client key
+        run: |
+          curl -fLsS --retry 2 -A "Mozilla/5.0" https://music.youtube.com/ -o "$RUNNER_TEMP/ytmusic.html"
+          python3 - <<'PY'
+          import pathlib, plistlib, re
+          html = pathlib.Path(__import__('os').environ['RUNNER_TEMP'], 'ytmusic.html').read_text()
+          match = re.search(r'INNERTUBE_API_KEY[^A-Za-z0-9]{1,12}(AIza[A-Za-z0-9_-]+)', html)
+          if not match:
+              raise SystemExit('YouTube Music did not provide a public client key')
+          path = pathlib.Path('Vibes/Vibes/Core/Network/InnerTube/APIKeys.plist')
+          path.write_bytes(plistlib.dumps({'YouTubeAPIKey': match.group(1)}))
+          print('YouTube Music client key configured')
+          PY
 
       - name: Build Vibes
         run: |
@@ -31,21 +41,17 @@ jobs:
       - name: Create unsigned IPA
         run: |
           mkdir -p Payload
-
           APP=$(find "$GITHUB_WORKSPACE/build" -maxdepth 1 -name "*.app" -type d | head -1)
-
           if [ -z "$APP" ]; then
             echo "ERROR: Vibes .app was not produced"
-            find "$GITHUB_WORKSPACE/build" -maxdepth 3 -print
             exit 1
           fi
-
-          echo "Found app: $APP"
           cp -R "$APP" Payload/
-          zip -r Vibes-unsigned.ipa Payload
+          zip -qr Vibes-unsigned.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: Vibes-unsigned-IPA
           path: Vibes-unsigned.ipa
+          if-no-files-found: error
